@@ -4,17 +4,22 @@
 
 // ===== SIDEBAR & PAGE NAVIGATION =====
 const PAGE_TITLES = {
+  'guide':          'คู่มือการใช้งาน',
   'fund-select':    'เลือกกองทุน',
   'thai-return':    'กองทุนไทย Annualized',
   'thai-cal':       'กองทุนไทย Calendar Year',
-  'master-cal':     'กอง Master Fund Calendar Year',
   'master-ann':     'กอง Master Fund Annualized Return',
+  'master-cal':     'กอง Master Fund Calendar Year',
   'fees':           'ค่าธรรมเนียมเหมาะสม',
   'other-factors':  'ปัจจัยประกอบอื่นๆ',
+  'other-factors-2':'Max DD (Master Fund)',
+  'other-factors-3':'Max DD (Thai Fund)',
   'top10':          'Top 10 Holding',
   'ftdata':         'ข้อมูลจาก FT.com',
   'robustness':     'Robustness Research',
 };
+
+let guideLoaded = false;
 
 function switchPage(el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -31,9 +36,55 @@ function switchPage(el) {
   if (pageId === 'master-ann')   populateMasterAnnTable();
   if (pageId === 'master-cal')   populateMasterCalTable();
   if (pageId === 'fees')          populateFeesTable();
-  if (pageId === 'other-factors') { buildRiskChart(); buildBarPanel(); }
+  if (pageId === 'guide')         loadGuidePage();
+  if (pageId === 'other-factors') { buildRiskChart(); }
+  if (pageId === 'other-factors-2') { buildMaxDdPage(); }
+  if (pageId === 'other-factors-3') { buildThaiMaxDdPage(); }
   if (pageId === 'top10')         { initGasSettings(); populateTop10Page(); }
   if (pageId === 'ftdata')        { initGasSettingsFt(); populateFTDataPage(); }
+}
+
+async function loadGuidePage() {
+  if (guideLoaded) return;
+  const contentEl = document.getElementById('guide-content');
+  const errorEl = document.getElementById('guide-error');
+  if (!contentEl) return;
+
+  const candidates = new Set(['README.md', './README.md', '../README.md', '/README.md']);
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  for (let i = pathParts.length; i >= 0; i--) {
+    const prefix = i === 0 ? '/' : '/' + pathParts.slice(0, i).join('/') + '/';
+    candidates.add(prefix + 'README.md');
+  }
+
+  for (const path of candidates) {
+    try {
+      const resp = await fetch(path, { cache: 'no-store' });
+      if (!resp.ok) continue;
+      const text = await resp.text();
+      contentEl.textContent = text;
+      if (errorEl) errorEl.style.display = 'none';
+      guideLoaded = true;
+      return;
+    } catch (_) {}
+  }
+
+  const fallbackEl = document.getElementById('guide-readme-fallback');
+  if (fallbackEl && fallbackEl.textContent.trim()) {
+    contentEl.textContent = fallbackEl.textContent.trim();
+    if (errorEl) {
+      errorEl.style.display = 'block';
+      errorEl.textContent = 'กำลังใช้ข้อความ fallback ที่ฝังไว้ เพราะ path ของ README.md ที่ deploy อยู่ยังเข้าถึงไม่ได้';
+    }
+    guideLoaded = true;
+    return;
+  }
+
+  contentEl.textContent = 'ไม่สามารถโหลด README.md ได้';
+  if (errorEl) {
+    errorEl.style.display = 'block';
+    errorEl.textContent = 'ไม่พบทั้ง README.md ที่อ่านได้และ fallback content';
+  }
 }
 
 function toggleSidebar() {
@@ -230,6 +281,11 @@ function hlStyle(code) {
   return bg ? `style="background:${bg}!important;"` : '';
 }
 
+function getFundDotColor(code, index = 0) {
+  const hlColor = highlightMap[code];
+  return hlColor ? HL_DOT_COLORS[hlColor] : DOT_PALETTE[index % DOT_PALETTE.length];
+}
+
 function applyHighlightToRow(code) {
   const bg = (() => {
     const color = highlightMap[code];
@@ -251,6 +307,23 @@ function applyHighlightToRow(code) {
   // cal tables: td.fund-code-mid
   document.querySelectorAll('#thai-cal-table td.fund-code-mid, #master-cal-table td.fund-code-mid').forEach(td => {
     if (td.textContent.trim() === code) {
+      td.style.background = bg || '';
+    }
+  });
+  // risk table: td.risk-fund-code
+  document.querySelectorAll('#risk-stats-table td.risk-fund-code').forEach(td => {
+    if (td.dataset.code === code) {
+      td.style.background = bg || '';
+    }
+  });
+  // max dd table: td.maxdd-fund-code
+  document.querySelectorAll('#maxdd-stats-table td.maxdd-fund-code').forEach(td => {
+    if (td.dataset.code === code) {
+      td.style.background = bg || '';
+    }
+  });
+  document.querySelectorAll('#thai-maxdd-stats-table td.thai-maxdd-fund-code').forEach(td => {
+    if (td.dataset.code === code) {
       td.style.background = bg || '';
     }
   });
@@ -1081,6 +1154,8 @@ function saveFeesAsImage() {
 // ===== หน้า ปัจจัยประกอบอื่นๆ — Risk-Return Scatter =====
 let riskPeriod = '3y';
 let riskChart  = null;
+let riskVisibleFunds = new Set();
+let riskLastSelectedCodes = new Set();
 
 // สีสำหรับ fund dots — ใช้ highlight ถ้ามี, ไม่งั้นใช้ชุดสีหลัก
 const DOT_PALETTE = [
@@ -1092,15 +1167,43 @@ const HL_DOT_COLORS = {
   blue:   '#2563eb', pink:   '#db2777',
 };
 
+function syncVisibleSet(visibleSet, lastSelectedSet, selectedFunds) {
+  const selectedCodes = new Set(selectedFunds.map(f => f.code));
+  selectedCodes.forEach(code => {
+    if (!lastSelectedSet.has(code)) visibleSet.add(code);
+  });
+  [...visibleSet].forEach(code => {
+    if (!selectedCodes.has(code)) visibleSet.delete(code);
+  });
+  lastSelectedSet.clear();
+  selectedCodes.forEach(code => lastSelectedSet.add(code));
+}
+
+function syncRiskVisibleFunds(selectedFunds) {
+  syncVisibleSet(riskVisibleFunds, riskLastSelectedCodes, selectedFunds);
+}
+
+function toggleRiskFundVisibility(code, checked) {
+  if (checked) riskVisibleFunds.add(code);
+  else riskVisibleFunds.delete(code);
+  buildRiskChart();
+}
+
+function toggleRiskVisibleAll(checked) {
+  const selectedFunds = allFunds.filter(f => checkedFunds.has(f.code));
+  selectedFunds.forEach(f => {
+    if (checked) riskVisibleFunds.add(f.code);
+    else riskVisibleFunds.delete(f.code);
+  });
+  buildRiskChart();
+}
+
 function setRiskPeriod(p) {
   riskPeriod = p;
   document.querySelectorAll('#risk-period-tabs .period-tab').forEach(b => {
     b.classList.toggle('active', b.dataset.period === p);
   });
   buildRiskChart();
-  // Also refresh bar panel if showing a risk metric (not cal_ret)
-  const metric = document.getElementById('bar-metric')?.value;
-  if (metric && metric !== 'cal_ret') buildBarPanel();
 }
 
 function buildRiskChart() {
@@ -1114,8 +1217,10 @@ function buildRiskChart() {
 
   // เก็บ funds ที่เลือก + มีข้อมูล period นี้
   const selectedFunds = allFunds.filter(f => checkedFunds.has(f.code));
+  syncRiskVisibleFunds(selectedFunds);
+  const visibleFunds = selectedFunds.filter(f => riskVisibleFunds.has(f.code));
 
-  const points = selectedFunds.map(f => {
+  const points = visibleFunds.map(f => {
     const r  = (f.risk && f.risk[riskPeriod]) || {};
     return {
       fund: f,
@@ -1132,10 +1237,30 @@ function buildRiskChart() {
     noData.style.display = 'block'; chartWrap.style.display = 'none';
     statsBody.innerHTML  = '';
     countEl.textContent  = '—';
+    const allVisibleCb = document.getElementById('risk-visible-all');
+    if (allVisibleCb) {
+      allVisibleCb.checked = false;
+      allVisibleCb.indeterminate = false;
+    }
     return;
   }
-  noData.style.display = 'none'; chartWrap.style.display = 'block';
-  countEl.textContent  = `${points.length} / ${selectedFunds.length} กองทุน (มีข้อมูล ${riskPeriod.toUpperCase()})`;
+
+  if (visibleFunds.length === 0 || points.length === 0) {
+    noData.style.display = 'block';
+    noData.textContent = visibleFunds.length === 0
+      ? 'ยังไม่มีกองทุนที่เลือกแสดงบนกราฟ'
+      : `กองทุนที่เลือกแสดงยังไม่มีข้อมูล ${riskPeriod.toUpperCase()}`;
+    chartWrap.style.display = 'none';
+    if (riskChart) { riskChart.destroy(); riskChart = null; }
+    countEl.textContent = `${visibleFunds.length} / ${selectedFunds.length} กองทุนบนกราฟ`;
+    buildRiskStatsTable(selectedFunds, statsBody);
+    return;
+  }
+
+  noData.style.display = 'none';
+  noData.textContent = 'ยังไม่มีกองทุนที่เลือก';
+  chartWrap.style.display = 'block';
+  countEl.textContent  = `${visibleFunds.length} / ${selectedFunds.length} กองทุนบนกราฟ (มีข้อมูล ${points.length} กองใน ${riskPeriod.toUpperCase()})`;
 
   // Axis labels
   const xLabels = { std_dev: 'SD — ความผันผวน (%)', max_dd: 'Max Drawdown (%)', sharpe: 'Sharpe Ratio' };
@@ -1147,8 +1272,7 @@ function buildRiskChart() {
 
   // Build datasets — each fund is its own dataset so we can label them
   const datasets = points.map((p, i) => {
-    const hlColor = highlightMap[p.fund.code];
-    const color   = hlColor ? HL_DOT_COLORS[hlColor] : DOT_PALETTE[i % DOT_PALETTE.length];
+    const color = getFundDotColor(p.fund.code, i);
     return {
       label: p.fund.code,
       data:  [{ x: p.x, y: p.y, fund: p.fund, pt: p }],
@@ -1263,7 +1387,7 @@ function buildRiskChart() {
   });
 
   // Stats table below
-  buildRiskStatsTable(points, statsBody);
+  buildRiskStatsTable(selectedFunds, statsBody);
 }
 
 function drawFundLabels(chart, points, xField, yField) {
@@ -1278,8 +1402,7 @@ function drawFundLabels(chart, points, xField, yField) {
     if (!meta || !meta.data || !meta.data[0]) return;
     const el = meta.data[0];
     const px = el.x, py = el.y;
-    const hlColor = highlightMap[p.fund.code];
-    const color   = hlColor ? HL_DOT_COLORS[hlColor] : DOT_PALETTE[i % DOT_PALETTE.length];
+    const color = getFundDotColor(p.fund.code, i);
 
     // Draw label above dot
     ctx.fillStyle = color;
@@ -1288,37 +1411,467 @@ function drawFundLabels(chart, points, xField, yField) {
   ctx.restore();
 }
 
-function buildRiskStatsTable(points, tbody) {
+function buildRiskStatsTable(selectedFunds, tbody) {
   tbody.innerHTML = '';
-  // Sort by sharpe desc
-  const sorted = [...points].sort((a,b) => (b.sharpe ?? -99) - (a.sharpe ?? -99));
-  sorted.forEach(p => {
+  const rows = selectedFunds.map(fund => {
+    const risk = (fund.risk && fund.risk[riskPeriod]) || {};
+    return {
+      fund,
+      visible: riskVisibleFunds.has(fund.code),
+      ret: risk.ret ?? null,
+      std_dev: risk.std_dev ?? null,
+      sharpe: risk.sharpe ?? null,
+      max_dd: risk.max_dd ?? null,
+    };
+  }).sort((a, b) => {
+    if (a.visible !== b.visible) return a.visible ? -1 : 1;
+    return a.fund.code.localeCompare(b.fund.code);
+  });
+
+  rows.forEach(p => {
     const hlColor = highlightMap[p.fund.code];
-    const dotColor = hlColor ? HL_DOT_COLORS[hlColor] : '#3b82f6';
-    const rowBg   = hlColor ? (DOT_PALETTE[0] + '00') : '';  // transparent
+    const dotColor = getFundDotColor(p.fund.code);
     const hlBg    = hlColor ? ({'yellow':'#fef08a','orange':'#fed7aa','green':'#bbf7d0','blue':'#bae6fd','pink':'#fecdd3'}[hlColor] || '') : '';
 
     const tr = document.createElement('tr');
+    if (p.visible) tr.classList.add('row-checked');
     tr.innerHTML = `
-      <td style="padding:5px 10px;border-bottom:1px solid #f0f2f5;white-space:nowrap;">
+      <td class="risk-check-cell">
+        <input type="checkbox" ${p.visible ? 'checked' : ''} onchange="toggleRiskFundVisibility('${p.fund.code}', this.checked)">
+      </td>
+      <td class="risk-fund-code" data-code="${p.fund.code}" ${hlStyle(p.fund.code)}>
         <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:5px;"></span>
         <strong style="${hlBg ? `background:${hlBg};padding:1px 5px;border-radius:3px;` : ''}color:var(--primary);">${p.fund.code}</strong>
       </td>
-      <td style="padding:5px 10px;border-bottom:1px solid #f0f2f5;text-align:center;color:${(p.ret??0)>=0?'#15803d':'#dc2626'};font-weight:600;">
+      <td class="risk-master-name" title="${p.fund.master_name || ''}">${p.fund.master_name || '—'}</td>
+      <td class="risk-num" style="color:${(p.ret??0)>=0?'#15803d':'#dc2626'};font-weight:600;">
         ${p.ret != null ? p.ret.toFixed(2)+'%' : '—'}
       </td>
-      <td style="padding:5px 10px;border-bottom:1px solid #f0f2f5;text-align:center;">
+      <td class="risk-num">
         ${p.std_dev != null ? p.std_dev.toFixed(2)+'%' : '—'}
       </td>
-      <td style="padding:5px 10px;border-bottom:1px solid #f0f2f5;text-align:center;color:${(p.sharpe??0)>=0?'#15803d':'#dc2626'};">
+      <td class="risk-num" style="color:${(p.sharpe??0)>=0?'#15803d':'#dc2626'};">
         ${p.sharpe != null ? p.sharpe.toFixed(2) : '—'}
       </td>
-      <td style="padding:5px 10px;border-bottom:1px solid #f0f2f5;text-align:center;color:#dc2626;">
+      <td class="risk-num" style="color:#dc2626;">
         ${p.max_dd != null ? p.max_dd.toFixed(2)+'%' : '—'}
       </td>
     `;
     tbody.appendChild(tr);
   });
+
+  const allVisibleCb = document.getElementById('risk-visible-all');
+  if (allVisibleCb) {
+    const visibleCount = rows.filter(r => r.visible).length;
+    allVisibleCb.checked = rows.length > 0 && visibleCount === rows.length;
+    allVisibleCb.indeterminate = visibleCount > 0 && visibleCount < rows.length;
+  }
+}
+
+// ===== หน้า ปัจจัยประกอบอื่นๆ (2) — Max Drawdown =====
+let maxDdChart = null;
+let visibleMaxDdYears = new Set(CAL_YEARS);
+let maxDdVisibleFunds = new Set();
+let maxDdLastSelectedCodes = new Set();
+
+function toggleMaxDdYear(yr, checked) {
+  if (checked) visibleMaxDdYears.add(yr);
+  else         visibleMaxDdYears.delete(yr);
+  buildMaxDdPage();
+}
+
+function syncMaxDdVisibleFunds(selectedFunds) {
+  syncVisibleSet(maxDdVisibleFunds, maxDdLastSelectedCodes, selectedFunds);
+}
+
+function toggleMaxDdFundVisibility(code, checked) {
+  if (checked) maxDdVisibleFunds.add(code);
+  else maxDdVisibleFunds.delete(code);
+  buildMaxDdPage();
+}
+
+function toggleMaxDdVisibleAll(checked) {
+  const selectedFunds = allFunds.filter(f => checkedFunds.has(f.code));
+  selectedFunds.forEach(f => {
+    if (checked) maxDdVisibleFunds.add(f.code);
+    else maxDdVisibleFunds.delete(f.code);
+  });
+  buildMaxDdPage();
+}
+
+function buildMaxDdPage() {
+  const noData = document.getElementById('maxdd-no-data');
+  const chartWrap = document.getElementById('maxdd-chart-wrap');
+  const thead = document.getElementById('maxdd-stats-head');
+  const tbody = document.getElementById('maxdd-stats-body');
+  const countEl = document.getElementById('maxdd-fund-count');
+
+  const activeYears = CAL_YEARS.filter(yr => visibleMaxDdYears.has(yr));
+  const selectedFunds = allFunds.filter(f => checkedFunds.has(f.code));
+  syncMaxDdVisibleFunds(selectedFunds);
+  const visibleFunds = selectedFunds.filter(f => maxDdVisibleFunds.has(f.code));
+  const yearsWithData = activeYears.filter(yr =>
+    visibleFunds.some(f => {
+      const mc = f.master_cal && f.master_cal[yr];
+      return mc && mc.max_dd != null;
+    })
+  );
+
+  if (selectedFunds.length === 0) {
+    noData.style.display = 'block';
+    noData.textContent = 'ยังไม่มีกองทุนที่เลือก';
+    chartWrap.style.display = 'none';
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+    countEl.textContent = '—';
+    if (maxDdChart) { maxDdChart.destroy(); maxDdChart = null; }
+    return;
+  }
+
+  buildMaxDdStatsTable(selectedFunds, activeYears, thead, tbody);
+
+  if (visibleFunds.length === 0 || yearsWithData.length === 0) {
+    noData.style.display = 'block';
+    noData.textContent = visibleFunds.length === 0
+      ? 'ยังไม่มีกองทุนที่เลือกแสดงบนกราฟ'
+      : 'กองทุนที่เลือกแสดงยังไม่มีข้อมูล Max DD รายปีในปีที่เลือก';
+    chartWrap.style.display = 'none';
+    countEl.textContent = `${visibleFunds.length} / ${selectedFunds.length} กองทุนบนกราฟ`;
+    if (maxDdChart) { maxDdChart.destroy(); maxDdChart = null; }
+    return;
+  }
+
+  noData.style.display = 'none';
+  chartWrap.style.display = 'block';
+  countEl.textContent = `${visibleFunds.length} / ${selectedFunds.length} กองทุนบนกราฟ (${yearsWithData.length} ปีที่มีข้อมูล)`;
+
+  const chartFunds = visibleFunds.map((fund, i) => ({
+    fund,
+    color: getFundDotColor(fund.code, i),
+    data: yearsWithData.map(yr => {
+      const mc = fund.master_cal && fund.master_cal[yr];
+      return mc && mc.max_dd != null ? mc.max_dd : null;
+    }),
+  })).filter(item => item.data.some(v => v != null));
+
+  if (maxDdChart) { maxDdChart.destroy(); maxDdChart = null; }
+  const ctx = document.getElementById('maxdd-chart').getContext('2d');
+  maxDdChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: yearsWithData,
+      datasets: chartFunds.map(item => ({
+        label: item.fund.code,
+        data: item.data,
+        backgroundColor: item.color + 'cc',
+        borderColor: item.color,
+        borderWidth: 1.2,
+        borderRadius: 4,
+      })),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'rectRounded' },
+        },
+        tooltip: {
+          callbacks: {
+            title: (items) => `ปี ${items[0]?.label || ''}`,
+            label: (item) => `${item.dataset.label}: ${item.raw?.toFixed(2)}%`,
+            afterLabel: (item) => {
+              const fund = chartFunds.find(f => f.fund.code === item.dataset.label)?.fund;
+              return fund?.master_name || '';
+            },
+          },
+          backgroundColor: 'rgba(15,23,42,0.92)',
+          titleColor: '#f8fafc',
+          bodyColor: '#cbd5e1',
+          padding: 10,
+          cornerRadius: 8,
+          bodyFont: { family: 'THSarabunNew', size: 13 },
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'ปี', color: '#64748b', font: { size: 12, family: 'THSarabunNew' } },
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: { color: '#94a3b8', font: { size: 11, family: 'THSarabunNew' } },
+        },
+        y: {
+          title: { display: true, text: 'Max DD (%)', color: '#64748b', font: { size: 12, family: 'THSarabunNew' } },
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: {
+            color: '#94a3b8',
+            font: { size: 11, family: 'THSarabunNew' },
+            callback: (value) => `${value}%`,
+          },
+        },
+      },
+    },
+  });
+}
+
+function buildMaxDdStatsTable(selectedFunds, activeYears, thead, tbody) {
+  thead.innerHTML = `
+    <tr>
+      <th class="risk-col-check">
+        โชว์บนกราฟ
+        <input type="checkbox" id="maxdd-visible-all" title="เลือก/ยกเลิกการแสดงทั้งหมดบนกราฟ"
+          onchange="toggleMaxDdVisibleAll(this.checked)">
+      </th>
+      <th class="risk-col-code">กองทุนไทย</th>
+      <th class="risk-col-master">Master Fund</th>
+      ${activeYears.map(yr => `<th>${yr}</th>`).join('')}
+    </tr>
+  `;
+
+  tbody.innerHTML = '';
+  const rows = selectedFunds.map(fund => {
+    return {
+      fund,
+      visible: maxDdVisibleFunds.has(fund.code),
+      values: activeYears.map(yr => {
+        const mc = fund.master_cal && fund.master_cal[yr];
+        return mc && mc.max_dd != null ? mc.max_dd : null;
+      }),
+    };
+  }).sort((a, b) => {
+    if (a.visible !== b.visible) return a.visible ? -1 : 1;
+    return a.fund.code.localeCompare(b.fund.code);
+  });
+
+  rows.forEach((row, i) => {
+    const hlColor = highlightMap[row.fund.code];
+    const hlBg = hlColor ? ({'yellow':'#fef08a','orange':'#fed7aa','green':'#bbf7d0','blue':'#bae6fd','pink':'#fecdd3'}[hlColor] || '') : '';
+    const dotColor = getFundDotColor(row.fund.code, i);
+    const tr = document.createElement('tr');
+    if (row.visible) tr.classList.add('row-checked');
+    tr.innerHTML = `
+      <td class="risk-check-cell">
+        <input type="checkbox" ${row.visible ? 'checked' : ''} onchange="toggleMaxDdFundVisibility('${row.fund.code}', this.checked)">
+      </td>
+      <td class="maxdd-fund-code" data-code="${row.fund.code}" ${hlStyle(row.fund.code)}>
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:5px;"></span>
+        <strong style="${hlBg ? `background:${hlBg};padding:1px 5px;border-radius:3px;` : ''}color:var(--primary);">${row.fund.code}</strong>
+      </td>
+      <td class="risk-master-name" title="${row.fund.master_name || ''}">${row.fund.master_name || '—'}</td>
+      ${row.values.map(v => `<td class="risk-num" style="color:#dc2626;font-weight:600;">${v != null ? v.toFixed(2)+'%' : '—'}</td>`).join('')}
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const allVisibleCb = document.getElementById('maxdd-visible-all');
+  if (allVisibleCb) {
+    const visibleCount = rows.filter(r => r.visible).length;
+    allVisibleCb.checked = rows.length > 0 && visibleCount === rows.length;
+    allVisibleCb.indeterminate = visibleCount > 0 && visibleCount < rows.length;
+  }
+}
+
+// ===== หน้า Max DD (Thai Fund) =====
+let thaiMaxDdChart = null;
+let visibleThaiMaxDdYears = new Set(CAL_YEARS);
+let thaiMaxDdVisibleFunds = new Set();
+let thaiMaxDdLastSelectedCodes = new Set();
+
+function toggleThaiMaxDdYear(yr, checked) {
+  if (checked) visibleThaiMaxDdYears.add(yr);
+  else         visibleThaiMaxDdYears.delete(yr);
+  buildThaiMaxDdPage();
+}
+
+function syncThaiMaxDdVisibleFunds(selectedFunds) {
+  syncVisibleSet(thaiMaxDdVisibleFunds, thaiMaxDdLastSelectedCodes, selectedFunds);
+}
+
+function toggleThaiMaxDdFundVisibility(code, checked) {
+  if (checked) thaiMaxDdVisibleFunds.add(code);
+  else thaiMaxDdVisibleFunds.delete(code);
+  buildThaiMaxDdPage();
+}
+
+function toggleThaiMaxDdVisibleAll(checked) {
+  const selectedFunds = allFunds.filter(f => checkedFunds.has(f.code));
+  selectedFunds.forEach(f => {
+    if (checked) thaiMaxDdVisibleFunds.add(f.code);
+    else thaiMaxDdVisibleFunds.delete(f.code);
+  });
+  buildThaiMaxDdPage();
+}
+
+function buildThaiMaxDdPage() {
+  const noData = document.getElementById('thai-maxdd-no-data');
+  const chartWrap = document.getElementById('thai-maxdd-chart-wrap');
+  const thead = document.getElementById('thai-maxdd-stats-head');
+  const tbody = document.getElementById('thai-maxdd-stats-body');
+  const countEl = document.getElementById('thai-maxdd-fund-count');
+
+  const activeYears = CAL_YEARS.filter(yr => visibleThaiMaxDdYears.has(yr));
+  const selectedFunds = allFunds.filter(f => checkedFunds.has(f.code));
+  syncThaiMaxDdVisibleFunds(selectedFunds);
+  const visibleFunds = selectedFunds.filter(f => thaiMaxDdVisibleFunds.has(f.code));
+  const yearsWithData = activeYears.filter(yr =>
+    visibleFunds.some(f => {
+      const tc = f.cal && f.cal[yr];
+      return tc && tc.max_dd != null;
+    })
+  );
+
+  if (selectedFunds.length === 0) {
+    noData.style.display = 'block';
+    noData.textContent = 'ยังไม่มีกองทุนที่เลือก';
+    chartWrap.style.display = 'none';
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+    countEl.textContent = '—';
+    if (thaiMaxDdChart) { thaiMaxDdChart.destroy(); thaiMaxDdChart = null; }
+    return;
+  }
+
+  buildThaiMaxDdStatsTable(selectedFunds, activeYears, thead, tbody);
+
+  if (visibleFunds.length === 0 || yearsWithData.length === 0) {
+    noData.style.display = 'block';
+    noData.textContent = visibleFunds.length === 0
+      ? 'ยังไม่มีกองทุนที่เลือกแสดงบนกราฟ'
+      : 'กองทุนที่เลือกแสดงยังไม่มีข้อมูล Max DD รายปีในปีที่เลือก';
+    chartWrap.style.display = 'none';
+    countEl.textContent = `${visibleFunds.length} / ${selectedFunds.length} กองทุนบนกราฟ`;
+    if (thaiMaxDdChart) { thaiMaxDdChart.destroy(); thaiMaxDdChart = null; }
+    return;
+  }
+
+  noData.style.display = 'none';
+  chartWrap.style.display = 'block';
+  countEl.textContent = `${visibleFunds.length} / ${selectedFunds.length} กองทุนบนกราฟ (${yearsWithData.length} ปีที่มีข้อมูล)`;
+
+  const chartFunds = visibleFunds.map((fund, i) => ({
+    fund,
+    color: getFundDotColor(fund.code, i),
+    data: yearsWithData.map(yr => {
+      const tc = fund.cal && fund.cal[yr];
+      return tc && tc.max_dd != null ? tc.max_dd : null;
+    }),
+  })).filter(item => item.data.some(v => v != null));
+
+  if (thaiMaxDdChart) { thaiMaxDdChart.destroy(); thaiMaxDdChart = null; }
+  const ctx = document.getElementById('thai-maxdd-chart').getContext('2d');
+  thaiMaxDdChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: yearsWithData,
+      datasets: chartFunds.map(item => ({
+        label: item.fund.code,
+        data: item.data,
+        backgroundColor: item.color + 'cc',
+        borderColor: item.color,
+        borderWidth: 1.2,
+        borderRadius: 4,
+      })),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'rectRounded' },
+        },
+        tooltip: {
+          callbacks: {
+            title: (items) => `ปี ${items[0]?.label || ''}`,
+            label: (item) => `${item.dataset.label}: ${item.raw?.toFixed(2)}%`,
+            afterLabel: (item) => {
+              const fund = chartFunds.find(f => f.fund.code === item.dataset.label)?.fund;
+              return fund?.name || '';
+            },
+          },
+          backgroundColor: 'rgba(15,23,42,0.92)',
+          titleColor: '#f8fafc',
+          bodyColor: '#cbd5e1',
+          padding: 10,
+          cornerRadius: 8,
+          bodyFont: { family: 'THSarabunNew', size: 13 },
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'ปี', color: '#64748b', font: { size: 12, family: 'THSarabunNew' } },
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: { color: '#94a3b8', font: { size: 11, family: 'THSarabunNew' } },
+        },
+        y: {
+          title: { display: true, text: 'Max DD (%)', color: '#64748b', font: { size: 12, family: 'THSarabunNew' } },
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: {
+            color: '#94a3b8',
+            font: { size: 11, family: 'THSarabunNew' },
+            callback: (value) => `${value}%`,
+          },
+        },
+      },
+    },
+  });
+}
+
+function buildThaiMaxDdStatsTable(selectedFunds, activeYears, thead, tbody) {
+  thead.innerHTML = `
+    <tr>
+      <th class="risk-col-check">
+        โชว์บนกราฟ
+        <input type="checkbox" id="thai-maxdd-visible-all" title="เลือก/ยกเลิกการแสดงทั้งหมดบนกราฟ"
+          onchange="toggleThaiMaxDdVisibleAll(this.checked)">
+      </th>
+      <th class="risk-col-code">กองทุนไทย</th>
+      <th class="risk-col-master">Master Fund</th>
+      ${activeYears.map(yr => `<th>${yr}</th>`).join('')}
+    </tr>
+  `;
+
+  tbody.innerHTML = '';
+  const rows = selectedFunds.map(fund => ({
+    fund,
+    visible: thaiMaxDdVisibleFunds.has(fund.code),
+    values: activeYears.map(yr => {
+      const tc = fund.cal && fund.cal[yr];
+      return tc && tc.max_dd != null ? tc.max_dd : null;
+    }),
+  })).sort((a, b) => {
+    if (a.visible !== b.visible) return a.visible ? -1 : 1;
+    return a.fund.code.localeCompare(b.fund.code);
+  });
+
+  rows.forEach((row, i) => {
+    const hlColor = highlightMap[row.fund.code];
+    const hlBg = hlColor ? ({'yellow':'#fef08a','orange':'#fed7aa','green':'#bbf7d0','blue':'#bae6fd','pink':'#fecdd3'}[hlColor] || '') : '';
+    const dotColor = getFundDotColor(row.fund.code, i);
+    const tr = document.createElement('tr');
+    if (row.visible) tr.classList.add('row-checked');
+    tr.innerHTML = `
+      <td class="risk-check-cell">
+        <input type="checkbox" ${row.visible ? 'checked' : ''} onchange="toggleThaiMaxDdFundVisibility('${row.fund.code}', this.checked)">
+      </td>
+      <td class="maxdd-fund-code thai-maxdd-fund-code" data-code="${row.fund.code}" ${hlStyle(row.fund.code)}>
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:5px;"></span>
+        <strong style="${hlBg ? `background:${hlBg};padding:1px 5px;border-radius:3px;` : ''}color:var(--primary);">${row.fund.code}</strong>
+      </td>
+      <td class="risk-master-name" title="${row.fund.master_name || ''}">${row.fund.master_name || '—'}</td>
+      ${row.values.map(v => `<td class="risk-num" style="color:#dc2626;font-weight:600;">${v != null ? v.toFixed(2)+'%' : '—'}</td>`).join('')}
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const allVisibleCb = document.getElementById('thai-maxdd-visible-all');
+  if (allVisibleCb) {
+    const visibleCount = rows.filter(r => r.visible).length;
+    allVisibleCb.checked = rows.length > 0 && visibleCount === rows.length;
+    allVisibleCb.indeterminate = visibleCount > 0 && visibleCount < rows.length;
+  }
 }
 
 // ===== RIGHT PANEL: BAR CHART / TABLE =====
@@ -1529,16 +2082,15 @@ const top10Checked    = new Set(); // ISINs ที่ tick checkbox ไว้
 
 const FT_BASE         = 'https://markets.ft.com/data/funds/tearsheet/holdings?s=';
 const FT_SUMMARY_BASE = 'https://markets.ft.com/data/funds/tearsheet/summary?s=';
+const DEFAULT_GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwtZMrMaJd7x91pmAazr5rDHaxphLV0olgR4jfaPWnpW4sKC9fkmETRxWaMZjsKmwcd/exec';
 
 // ===== GAS URL MANAGEMENT =====
-let gasWebAppUrl = localStorage.getItem('ft_gas_url') || '';
+let gasWebAppUrl = localStorage.getItem('ft_gas_url') || DEFAULT_GAS_WEB_APP_URL;
 
 function initGasSettings() {
   const input = document.getElementById('gas-url-input');
-  if (input && gasWebAppUrl) {
-    input.value = gasWebAppUrl;
-    updateGasBadge(true);
-  }
+  if (input) input.value = gasWebAppUrl || DEFAULT_GAS_WEB_APP_URL;
+  updateGasBadge(!!gasWebAppUrl);
 }
 
 function onGasUrlChange(val) {
@@ -1579,7 +2131,7 @@ function toggleGasHelp(e) {
 function initGasSettingsFt() {
   const input = document.getElementById('gas-url-input-ft');
   const badge = document.getElementById('gas-status-badge-ft');
-  if (input) input.value = gasWebAppUrl || '';
+  if (input) input.value = gasWebAppUrl || DEFAULT_GAS_WEB_APP_URL;
   if (badge) {
     badge.textContent = gasWebAppUrl ? '✅ พร้อมใช้งาน' : '⚠️ ยังไม่ได้ตั้งค่า';
     badge.className   = 'gas-badge ' + (gasWebAppUrl ? 'gas-badge-ok' : 'gas-badge-warn');
@@ -1610,6 +2162,16 @@ function toggleGasHelpFt(e) {
 // PAGE: ข้อมูลจาก FT.com  (layout เหมือน Top 10 Holding)
 // ================================================================
 const ftdataChecked = new Set(); // ISINs ที่ tick checkbox ไว้
+
+function ftSummaryHasDisplayData(summary) {
+  if (!summary || summary.status !== 'ok' || !summary.data) return false;
+  const d = summary.data;
+  return !!(
+    d.ter || d.fundSize || d.manager || d.benchmark || d.domicile ||
+    d.inceptionDate || d.currency || d.fundType || d.morningstar ||
+    (d.performance && Object.keys(d.performance).length > 0)
+  );
+}
 
 function populateFTDataPage() {
   const noData  = document.getElementById('ftdata-no-data');
@@ -1683,9 +2245,18 @@ function updateFTDataRowStatus(isin, result) {
   const cell = document.getElementById(`ftdstatus-${isin}`);
   const cb   = document.querySelector(`.ftdata-row-cb[data-isin="${isin}"]`);
   if (!cell) return;
+  const summary = summaryCache[isin] || { status: 'error', data: {} };
+  const holdingsOk = result.status === 'ok' && result.rows.length > 0;
+  const summaryOk = ftSummaryHasDisplayData(summary);
 
-  if (result.status === 'ok' && result.rows.length > 0) {
-    cell.innerHTML = `<span class="t10-status-ok">✅ ข้อมูลพร้อมใช้งาน <span style="color:#9ca3af;font-size:10px;">(${result.rows.length} holdings)</span></span>`;
+  if (holdingsOk) {
+    cell.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span class="t10-status-ok">✅ Holdings พร้อมใช้งาน <span style="color:#9ca3af;font-size:10px;">(${result.rows.length} รายการ)</span></span>
+        <span class="${summaryOk ? 't10-status-ok' : 't10-status-err'}" style="font-size:11px;">
+          ${summaryOk ? '✅ Summary พร้อมใช้งาน' : '⚠️ Summary ยังไม่มี field ที่แสดงได้'}
+        </span>
+      </div>`;
     if (cb) { cb.disabled = false; }
   } else if (result.noGas) {
     cell.innerHTML = `<span class="t10-status-err">⚙️ กรุณาตั้งค่า GAS URL ด้านบน</span>`;
@@ -1775,6 +2346,8 @@ function renderFTDataPanel() {
     // Fund name: prefer summary name
     const displayName = (sum && sum.status === 'ok' && sum.data.fundName)
       ? sum.data.fundName : group.masterName;
+    const ftSummaryUrl = `https://markets.ft.com/data/funds/tearsheet/summary?s=${group.isin}`;
+    const ftHoldingsUrl = `https://markets.ft.com/data/funds/tearsheet/holdings?s=${group.isin}`;
 
     let html = `
       <div class="ftcard-header" style="${accentStyle}">
@@ -1787,8 +2360,11 @@ function renderFTDataPanel() {
         </div>
       </div>`;
 
+    const holdingsOk = hold.status === 'ok' && hold.rows.length > 0;
+    const summaryOk = ftSummaryHasDisplayData(sum);
+
     // Error state
-    if (hold.noGas || (hold.status !== 'ok' && (!sum || sum.status !== 'ok'))) {
+    if (hold.noGas || (!holdingsOk && !summaryOk)) {
       html += `<div class="ftcard-placeholder" style="color:#9ca3af;">
         ${hold.noGas ? '⚙️ กรุณาตั้งค่า GAS URL ด้านบนก่อน'
           : '⚠️ ไม่มีข้อมูล — <a href="https://markets.ft.com/data/funds/tearsheet/summary?s='+group.isin+'" target="_blank" style="color:var(--primary);">เปิดหน้า FT โดยตรง →</a>'}
@@ -1798,8 +2374,12 @@ function renderFTDataPanel() {
       return;
     }
 
+    if (!summaryOk) {
+      html += `<div class="ftcard-summary-line">⚠️ ขณะนี้โหลด holdings ได้ แต่ summary จาก FT ยังไม่มี field ที่แสดงได้จริง จึงยังไม่แสดงข้อมูลอย่าง TER, Fund Size, Manager, Benchmark และ Performance</div>`;
+    }
+
     // ---- Key facts grid ----
-    if (sum && sum.status === 'ok' && sum.data) {
+    if (summaryOk) {
       const d = sum.data;
       const facts = [
         { label: 'Ongoing Charge (TER)', value: d.ter,            icon: '💰' },
@@ -1839,11 +2419,18 @@ function renderFTDataPanel() {
       }
     }
 
+    html += `
+      <div class="ftcard-actions">
+        <a class="ftcard-link" href="${ftSummaryUrl}" target="_blank">เปิดหน้า Summary บน FT.com</a>
+        <a class="ftcard-link" href="${ftHoldingsUrl}" target="_blank">เปิดหน้า Holdings บน FT.com</a>
+      </div>`;
+
     // ---- Top Holdings ----
     if (hold.status === 'ok' && hold.rows.length > 0) {
       const maxW  = Math.max(...hold.rows.map(r => r.weight));
       const total = hold.rows.reduce((s, r) => s + r.weight, 0);
-      html += `<div class="ftcard-section-title">Top ${hold.rows.length} Holdings</div>
+      html += `<div class="ftcard-section-title">Portfolio Holdings</div>
+      <div class="ftcard-summary-line">แสดงข้อมูลถือครอง ${hold.rows.length} รายการ รวมสัดส่วน ${total.toFixed(2)}%</div>
       <table class="ftcard-holdings-table">
         <thead><tr>
           <th style="width:26px;">#</th>
@@ -1863,7 +2450,7 @@ function renderFTDataPanel() {
       });
       html += `</tbody>
         <tfoot><tr>
-          <td colspan="2" style="text-align:right;font-size:11px;color:var(--text-sub);padding:5px 8px;">รวม Top ${hold.rows.length}</td>
+          <td colspan="2" style="text-align:right;font-size:11px;color:var(--text-sub);padding:5px 8px;">รวม ${hold.rows.length} รายการ</td>
           <td class="top10-weight" style="font-weight:700;color:var(--primary);">${total.toFixed(2)}%</td>
           <td></td>
         </tr></tfoot>
@@ -1934,11 +2521,11 @@ function populateTop10Page() {
   const tbody   = document.getElementById('top10-tbody');
   const statusEl = document.getElementById('top10-status');
   if (statusEl) statusEl.textContent = '';
-  top10Checked.clear();
-  renderDetailPanel();
 
   const selected = allFunds.filter(f => checkedFunds.has(f.code));
   if (selected.length === 0) {
+    top10Checked.clear();
+    renderDetailPanel();
     noData.style.display = 'block';
     table.style.display  = 'none';
     return;
@@ -1946,11 +2533,18 @@ function populateTop10Page() {
 
   const groups = buildTop10Groups();
   if (groups.length === 0) {
+    top10Checked.clear();
+    renderDetailPanel();
     noData.style.display = 'block';
     table.style.display  = 'none';
     noData.textContent   = 'กองทุนที่เลือกไม่มีข้อมูล ISIN — ไม่สามารถดึง Holdings ได้';
     return;
   }
+  const validIsins = new Set(groups.map(g => g.isin));
+  [...top10Checked].forEach(isin => {
+    if (!validIsins.has(isin)) top10Checked.delete(isin);
+  });
+  renderDetailPanel();
   noData.style.display = 'none';
   table.style.display  = 'table';
 
@@ -1992,7 +2586,7 @@ function buildSummaryRow(group) {
     </td>
     <td class="t10-cb-cell">
       <input type="checkbox" class="top10-row-cb" data-isin="${group.isin}"
-             onchange="top10ToggleRow(this)" style="accent-color:var(--primary);" disabled>
+             onchange="top10ToggleRow(this)" style="accent-color:var(--primary);" ${top10Checked.has(group.isin) ? 'checked' : ''} disabled>
     </td>
   `;
   return tr;
@@ -2006,7 +2600,10 @@ function updateRowStatus(isin, result) {
 
   if (result.status === 'ok' && result.rows.length > 0) {
     cell.innerHTML = `<span class="t10-status-ok">✅ ข้อมูลพร้อมใช้งาน <span style="color:#9ca3af;font-size:10px;">(${result.rows.length} รายการ)</span></span>`;
-    if (cb) { cb.disabled = false; }
+    if (cb) {
+      cb.disabled = false;
+      cb.checked = top10Checked.has(isin);
+    }
   } else if (result.noGas) {
     cell.innerHTML = `<span class="t10-status-err">⚙️ กรุณาตั้งค่า Google Apps Script URL ด้านบนก่อน</span>`;
     if (cb) { cb.disabled = true; cb.checked = false; top10Checked.delete(isin); }
@@ -2282,12 +2879,20 @@ function parseFTHoldings(html) {
         if (!isNaN(w)) rows.push({ name, weight: w });
       }
     }
-    if (rows.length >= 10) break;
   }
   return rows.length > 0 ? { status: 'ok', rows } : { status: 'error', rows: [] };
 }
 
 // ---- checkbox logic ----
+let top10ViewMode = 'card';
+
+function setTop10ViewMode(mode) {
+  top10ViewMode = mode;
+  document.getElementById('top10-view-card-btn')?.classList.toggle('active', mode === 'card');
+  document.getElementById('top10-view-compare-btn')?.classList.toggle('active', mode === 'compare');
+  renderDetailPanel();
+}
+
 function top10ToggleRow(cb) {
   const isin = cb.dataset.isin;
   if (cb.checked) top10Checked.add(isin); else top10Checked.delete(isin);
@@ -2329,6 +2934,19 @@ function renderDetailPanel() {
   const groups = buildTop10Groups().filter(g => top10Checked.has(g.isin));
   content.innerHTML = '';
 
+  if (top10ViewMode === 'compare') {
+    renderTop10CompareView(groups, content);
+    return;
+  }
+
+  if (groups.length > 1) {
+    const compareSection = document.createElement('div');
+    compareSection.className = 'top10-compare-section';
+    compareSection.innerHTML = `<div class="top10-compare-section-title">ตารางเปรียบเทียบ Top 10 ของกองที่เลือก</div>`;
+    renderTop10CompareView(groups, compareSection);
+    content.appendChild(compareSection);
+  }
+
   groups.forEach(group => {
     const holdResult = holdingsCache[group.isin];
     const sumResult  = summaryCache[group.isin];
@@ -2338,11 +2956,16 @@ function renderDetailPanel() {
     block.className = 'top10-detail-block';
 
     // ---- Title ----
+    const displayRows = holdResult.rows.slice(0, 10);
+    const totalWeight = displayRows.length > 0
+      ? displayRows.reduce((s, r) => s + r.weight, 0)
+      : null;
     let html = `
       <div class="top10-detail-block-title">
         <strong>${group.isin}</strong>
         <span style="color:var(--text-sub);font-size:11px;font-weight:400;">${group.masterName}</span>
       </div>`;
+    html += `<div class="top10-summary-inline">Top 10 คิดเป็น ${totalWeight != null ? totalWeight.toFixed(2) + '%' : 'ไม่มีข้อมูล'}</div>`;
 
     // ---- FT Summary stats (if available) ----
     if (sumResult && sumResult.status === 'ok') {
@@ -2375,8 +2998,7 @@ function renderDetailPanel() {
     }
 
     // ---- Holdings table ----
-    const totalWeight = holdResult.rows.reduce((s, r) => s + r.weight, 0);
-    const maxW = Math.max(...holdResult.rows.map(r => r.weight));
+    const maxW = Math.max(...displayRows.map(r => r.weight));
 
     html += `
       <div class="ft-section-label" style="padding:6px 12px 2px;">Top Holdings</div>
@@ -2391,7 +3013,7 @@ function renderDetailPanel() {
         </thead>
         <tbody>`;
 
-    holdResult.rows.forEach((r, i) => {
+    displayRows.forEach((r, i) => {
       const barW = Math.round((r.weight / maxW) * 100);
       html += `
         <tr>
@@ -2406,7 +3028,7 @@ function renderDetailPanel() {
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="2" style="text-align:right;font-size:11px;color:var(--text-sub);padding:5px 8px;">รวม Top ${holdResult.rows.length}</td>
+            <td colspan="2" style="text-align:right;font-size:11px;color:var(--text-sub);padding:5px 8px;">รวม Top ${displayRows.length}</td>
             <td class="top10-weight" style="font-weight:700;color:var(--primary);">${totalWeight.toFixed(2)}%</td>
             <td></td>
           </tr>
@@ -2416,6 +3038,85 @@ function renderDetailPanel() {
     block.innerHTML = html;
     content.appendChild(block);
   });
+}
+
+function renderTop10CompareView(groups, content) {
+  const loadedGroups = groups.map(group => ({
+    group,
+    holdResult: holdingsCache[group.isin],
+  })).filter(item => item.holdResult && item.holdResult.status === 'ok' && item.holdResult.rows.length > 0);
+
+  if (loadedGroups.length === 0) {
+    content.innerHTML = `<div class="top10-compare-note">ยังไม่มีข้อมูล holdings ที่โหลดสำเร็จสำหรับกองที่ติ๊กไว้</div>`;
+    return;
+  }
+
+  const comparisonMap = new Map();
+  const top10Totals = {};
+  loadedGroups.forEach(({ group, holdResult }) => {
+    const topRows = holdResult.rows.slice(0, 10);
+    top10Totals[group.isin] = topRows.length > 0
+      ? topRows.reduce((s, r) => s + r.weight, 0)
+      : null;
+    topRows.forEach(row => {
+      const key = row.name.trim();
+      if (!comparisonMap.has(key)) {
+        comparisonMap.set(key, { name: key, weights: {}, count: 0, total: 0 });
+      }
+      const item = comparisonMap.get(key);
+      item.weights[group.isin] = row.weight;
+      item.count += 1;
+      item.total += row.weight;
+    });
+  });
+
+  const rows = [...comparisonMap.values()].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    if (b.total !== a.total) return b.total - a.total;
+    return a.name.localeCompare(b.name);
+  });
+
+  const maxWeight = Math.max(...rows.flatMap(r => Object.values(r.weights)), 0);
+  const wrap = document.createElement('div');
+  wrap.className = 'top10-compare-wrap';
+
+  let html = `<table class="top10-compare-table"><thead><tr><th class="top10-compare-name">หุ้น / สินทรัพย์</th>`;
+  loadedGroups.forEach(({ group }) => {
+    const total = top10Totals[group.isin];
+    html += `<th class="top10-compare-cell">${group.thaiCodes.map(c => `<span class="top10-code-tag">${c}</span>`).join('')}<div style="font-size:10px;font-weight:400;color:rgba(255,255,255,.78);margin-top:4px;">${group.isin}</div><div style="font-size:10px;font-weight:400;color:rgba(255,255,255,.86);margin-top:4px;">Top 10 = ${total != null ? total.toFixed(2) + '%' : 'ไม่มีข้อมูล'}</div></th>`;
+  });
+  html += `</tr></thead><tbody>`;
+
+  rows.forEach(row => {
+    html += `<tr><td class="top10-compare-name">${row.name}</td>`;
+    loadedGroups.forEach(({ group }) => {
+      const weight = row.weights[group.isin];
+      if (weight == null) {
+        html += `<td class="top10-compare-cell"><div class="top10-compare-empty">—</div></td>`;
+        return;
+      }
+      const barW = maxWeight > 0 ? Math.max(2, Math.round((weight / maxWeight) * 100)) : 0;
+      html += `
+        <td class="top10-compare-cell">
+          <div class="top10-compare-weight">
+            <span class="top10-compare-val">${weight.toFixed(2)}%</span>
+            <div class="top10-compare-bar-track">
+              <div class="top10-compare-bar" style="width:${barW}%"></div>
+            </div>
+          </div>
+        </td>`;
+    });
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+  content.appendChild(wrap);
+
+  const note = document.createElement('div');
+  note.className = 'top10-compare-note';
+  note.textContent = `เปรียบเทียบจากรายชื่อ Top 10 ของแต่ละกองที่เลือก โดยรวมชื่อ holdings ทั้งหมดเป็นรายการเดียว แล้วแสดงน้ำหนักของแต่ละกองแยกตามคอลัมน์`;
+  content.appendChild(note);
 }
 
 // ---- load all in sequence ----
