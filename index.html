@@ -31,6 +31,10 @@
     <div class="sidebar-section-label">กระบวนการคัดกองทุน</div>
 
     <ul class="nav-list">
+      <li class="nav-item" data-page="guide" onclick="switchPage(this)">
+        <span class="nav-icon">📘</span>
+        <span class="nav-label">คู่มือการใช้งาน</span>
+      </li>
       <li class="nav-item active" data-page="fund-select" onclick="switchPage(this)">
         <span class="nav-icon">🔍</span>
         <span class="nav-label">เลือกกองทุน</span>
@@ -43,13 +47,13 @@
         <span class="nav-icon">📅</span>
         <span class="nav-label">กองทุนไทย Calendar Year</span>
       </li>
-      <li class="nav-item" data-page="master-cal" onclick="switchPage(this)">
-        <span class="nav-icon">📅</span>
-        <span class="nav-label">Calendar Year (Master Fund)</span>
-      </li>
       <li class="nav-item" data-page="master-ann" onclick="switchPage(this)">
         <span class="nav-icon">📊</span>
         <span class="nav-label">Annualized (Master Fund)</span>
+      </li>
+      <li class="nav-item" data-page="master-cal" onclick="switchPage(this)">
+        <span class="nav-icon">📅</span>
+        <span class="nav-label">Calendar Year (Master Fund)</span>
       </li>
       <li class="nav-item" data-page="fees" onclick="switchPage(this)">
         <span class="nav-icon">💰</span>
@@ -58,6 +62,14 @@
       <li class="nav-item" data-page="other-factors" onclick="switchPage(this)">
         <span class="nav-icon">🔎</span>
         <span class="nav-label">ปัจจัยประกอบอื่นๆ</span>
+      </li>
+      <li class="nav-item" data-page="other-factors-2" onclick="switchPage(this)">
+        <span class="nav-icon">📉</span>
+        <span class="nav-label">Max DD (Master Fund)</span>
+      </li>
+      <li class="nav-item" data-page="other-factors-3" onclick="switchPage(this)">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Max DD (Thai Fund)</span>
       </li>
       <li class="nav-item" data-page="top10" onclick="switchPage(this)">
         <span class="nav-icon">🏆</span>
@@ -85,6 +97,53 @@
     <div id="etf-bar" class="etf-bar" style="display:none">
       <span class="etf-bar-title">iShares ETF Reference</span>
       <div id="etf-chips" class="etf-chips"></div>
+    </div>
+
+    <!-- PAGE: คู่มือการใช้งาน -->
+    <div id="page-guide" class="page">
+      <div class="guide-page">
+        <div class="guide-simple-header">
+          <h1>คู่มือการใช้งาน</h1>
+          <p>แสดงเนื้อหาจากไฟล์ <code>README.md</code> โดยตรง</p>
+        </div>
+        <pre id="guide-content" class="guide-raw">กำลังโหลด README...</pre>
+        <div id="guide-error" class="guide-error" style="display:none;"></div>
+        <script id="guide-readme-fallback" type="text/plain"># Fund-Selection-Tool-V.1-31-03-2026
+
+# 📊 Fund Selection Tool (V.1) 🇹🇭
+เครื่องมือช่วยวิเคราะห์และคัดเลือกกองทุนรวม (Beta Version) เพื่อการตัดสินใจลงทุนอย่างมีระบบ
+
+---
+
+## 🚀 ขั้นตอนการใช้งานเบื้องต้น
+
+### 1. การเลือกกองทุน (Fund Selection)
+เริ่มต้นที่หน้าแรกเพื่อค้นหากองทุนที่ตรงกับสไตล์การลงทุนของคุณ:
+* **ตัวกรองอัจฉริยะ:** คุณสามารถเลือกกรองตาม **หมวดหมู่ (Category)**, **ประเภทกองทุน (Type)**, **สไตล์การลงทุน**, และ **นโยบายเงินปันผล**
+* **ระบบ Checkbox:** ติ๊กเลือกกองทุนที่สนใจที่ช่องด้านหน้า เพื่อส่งรายชื่อกองทุนเหล่านั้นเข้าสู่กระบวนการคัดสรรเชิงลึกในขั้นตอนถัดไป
+* **จุดไฮไลท์:** ระบบจะมีการ **มาร์คสี (Color Highlight)** เพื่อช่วยให้กองทุนที่คุณสนใจโดดเด่นและสังเกตง่ายเมื่อสลับไปดูในเมนูวิเคราะห์อื่นๆ
+
+### 2. การวิเคราะห์ผลตอบแทน (Performance Analysis)
+ในเมนู **Annualized Return** หรือ **Calendar Year**:
+* **Sortable Table:** คุณสามารถ **คลิกที่หัวตาราง (Table Header)** เพื่อเรียงลำดับข้อมูลผลตอบแทนจาก **มากไปน้อย** หรือ **น้อยไปมาก** ได้ทันที ช่วยให้เห็นกองทุนที่ทำผลงานได้โดดเด่นที่สุดในแต่ละช่วงเวลา
+
+### 3. การตรวจสอบค่าธรรมเนียม (Fees)
+* **Fee Structure:** แสดงโครงสร้างค่าธรรมเนียมที่เหมาะสมเพื่อเปรียบเทียบความคุ้มค่า
+* *หมายเหตุ: ปัจจุบันยังเป็นข้อมูลจากฐานข้อมูลชุดทดสอบ (Static Data) ยังไม่ใช่การดึงข้อมูลแบบ Real-time*
+
+### 4. สัดส่วนการถือครอง (Top 10 Holdings)
+* **Master Fund Insights:** ดูรายละเอียดหุ้นหรือสินทรัพย์ 10 อันดับแรกที่กองทุนถือครอง เพื่อวิเคราะห์ความเสี่ยงและแนวทางของ Master Fund
+* *หมายเหตุ: ข้อมูลในส่วนนี้เป็นไฟล์ข้อมูลชุดปัจจุบัน (Static Data) เช่นเดียวกับส่วนของค่าธรรมเนียม*
+
+---
+
+## 🛠 ข้อมูลทางเทคนิค (Internal Logic)
+* **Color Ranking:** ระบบใช้การแบ่งกลุ่มผลงานออกเป็น 6 ระดับ (Sextiles) โดยใช้สีตั้งแต่ `--rank-1` (เขียวเข้ม) ไปจนถึง `--rank-6` (แดง) เพื่อการเปรียบเทียบที่รวดเร็ว
+* **Data Driven:** พัฒนาด้วย HTML/CSS และ JavaScript โดยดึงข้อมูลหลักจาก `data.js`
+
+---
+*คำเตือน: เครื่องมือนี้จัดทำขึ้นเพื่อช่วยอำนวยความสะดวกในการวิเคราะห์ข้อมูลเท่านั้น ผู้ลงทุนควรศึกษาข้อมูลเพิ่มเติมจากหนังสือชี้ชวนก่อนตัดสินใจลงทุน*</script>
+        </div>
     </div>
 
     <!-- PAGE: เลือกกองทุน -->
@@ -389,80 +448,119 @@
           </select>
         </div>
         <span style="font-size:12px;color:var(--text-sub);" id="risk-fund-count">—</span>
-
-        <!-- DIVIDER -->
-        <div class="risk-toolbar-divider"></div>
-
-        <!-- RIGHT controls (bar/table panel) -->
-        <div class="risk-ctrl-group">
-          <span class="risk-ctrl-label">ข้อมูล</span>
-          <select id="bar-metric" onchange="buildBarPanel()" class="risk-select">
-            <option value="cal_ret" selected>ผลตอบแทนรายปี (%)</option>
-            <option value="max_dd">Max Drawdown (%)</option>
-            <option value="std_dev">SD — ความผันผวน (%)</option>
-            <option value="sharpe">Sharpe Ratio</option>
-          </select>
-        </div>
-        <div class="risk-ctrl-group" style="gap:4px;">
-          <button class="bar-view-btn active" id="btn-chart-view" onclick="setBarView('chart')" title="แสดงกราฟ">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="12" width="4" height="10"/><rect x="10" y="7" width="4" height="15"/><rect x="18" y="2" width="4" height="20"/></svg>
-            กราฟ
-          </button>
-          <button class="bar-view-btn" id="btn-table-view" onclick="setBarView('table')" title="แสดงตาราง">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-            ตาราง
-          </button>
-        </div>
       </div>
 
-      <!-- ===== TWO-PANEL CONTENT ===== -->
+      <!-- ===== SINGLE-PANEL CONTENT ===== -->
       <div class="risk-panels">
 
-        <!-- LEFT panel: scatter chart -->
         <div class="risk-panel risk-panel-left">
           <div class="risk-panel-title">Scatter: ผลตอบแทน vs ความเสี่ยง</div>
           <div id="risk-no-data" style="display:none;text-align:center;padding:60px;color:var(--text-sub);">
             ยังไม่มีกองทุนที่เลือก
           </div>
-          <div id="risk-chart-wrap" style="position:relative;flex:1;min-height:300px;background:#fff;border-radius:8px;border:1px solid var(--border);padding:10px;">
+          <div id="risk-chart-wrap" style="position:relative;flex:1;min-height:460px;background:#fff;border-radius:8px;border:1px solid var(--border);padding:10px;">
             <canvas id="risk-chart"></canvas>
           </div>
-          <div id="risk-stats-wrap" style="margin-top:10px;overflow-x:auto;">
-            <table id="risk-stats-table" style="width:100%;border-collapse:collapse;font-size:12px;font-family:'THSarabunNew';">
+          <div id="risk-stats-wrap" class="table-wrap risk-stats-wrap">
+            <table id="risk-stats-table">
               <thead>
-                <tr style="background:#f1f5fb;">
-                  <th style="padding:5px 8px;text-align:left;border-bottom:2px solid #e0e4ea;font-size:11px;color:#6b7280;white-space:nowrap;">กองทุน</th>
-                  <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e0e4ea;font-size:11px;color:#6b7280;">Return (%)</th>
-                  <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e0e4ea;font-size:11px;color:#6b7280;">SD (%)</th>
-                  <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e0e4ea;font-size:11px;color:#6b7280;">Sharpe</th>
-                  <th style="padding:5px 8px;text-align:center;border-bottom:2px solid #e0e4ea;font-size:11px;color:#6b7280;">Max DD (%)</th>
+                <tr>
+                  <th class="risk-col-check">
+                    โชว์บนกราฟ
+                    <input type="checkbox" id="risk-visible-all" title="เลือก/ยกเลิกการแสดงทั้งหมดบนกราฟ"
+                      onchange="toggleRiskVisibleAll(this.checked)">
+                  </th>
+                  <th class="risk-col-code">กองทุนไทย</th>
+                  <th class="risk-col-master">Master Fund</th>
+                  <th>Return (%)</th>
+                  <th>SD (%)</th>
+                  <th>Sharpe</th>
+                  <th>Max DD (%)</th>
                 </tr>
               </thead>
               <tbody id="risk-stats-body"></tbody>
             </table>
           </div>
         </div>
+      </div><!-- end risk-panels -->
+    </div>
 
-        <!-- RIGHT panel: bar chart / table -->
-        <div class="risk-panel risk-panel-right">
-          <div class="risk-panel-title" id="bar-panel-title">ผลตอบแทนรายปี — เปรียบเทียบแต่ละกอง</div>
-          <div id="bar-no-data" style="display:none;text-align:center;padding:60px;color:var(--text-sub);">
+    <!-- PAGE: ปัจจัยประกอบอื่นๆ (2) -->
+    <div id="page-other-factors-2" class="page">
+      <div class="risk-toolbar">
+        <span style="font-size:12px;color:var(--text-sub);" id="maxdd-fund-count">—</span>
+      </div>
+
+      <div class="year-toggle-bar">
+        <span class="year-toggle-label">แสดงปี:</span>
+        <label class="year-check"><input type="checkbox" value="2016" checked onchange="toggleMaxDdYear('2016',this.checked)">2016</label>
+        <label class="year-check"><input type="checkbox" value="2017" checked onchange="toggleMaxDdYear('2017',this.checked)">2017</label>
+        <label class="year-check"><input type="checkbox" value="2018" checked onchange="toggleMaxDdYear('2018',this.checked)">2018</label>
+        <label class="year-check"><input type="checkbox" value="2019" checked onchange="toggleMaxDdYear('2019',this.checked)">2019</label>
+        <label class="year-check"><input type="checkbox" value="2020" checked onchange="toggleMaxDdYear('2020',this.checked)">2020</label>
+        <label class="year-check"><input type="checkbox" value="2021" checked onchange="toggleMaxDdYear('2021',this.checked)">2021</label>
+        <label class="year-check"><input type="checkbox" value="2022" checked onchange="toggleMaxDdYear('2022',this.checked)">2022</label>
+        <label class="year-check"><input type="checkbox" value="2023" checked onchange="toggleMaxDdYear('2023',this.checked)">2023</label>
+        <label class="year-check"><input type="checkbox" value="2024" checked onchange="toggleMaxDdYear('2024',this.checked)">2024</label>
+        <label class="year-check"><input type="checkbox" value="2025" checked onchange="toggleMaxDdYear('2025',this.checked)">2025</label>
+      </div>
+
+      <div class="risk-panels">
+        <div class="risk-panel risk-panel-left">
+          <div class="risk-panel-title">Max DD (Master Fund) รายปี</div>
+          <div id="maxdd-no-data" style="display:none;text-align:center;padding:60px;color:var(--text-sub);">
             ยังไม่มีกองทุนที่เลือก
           </div>
-          <!-- Chart view -->
-          <div id="bar-chart-wrap" style="position:relative;flex:1;min-height:300px;background:#fff;border-radius:8px;border:1px solid var(--border);padding:10px;">
-            <canvas id="bar-chart"></canvas>
+          <div id="maxdd-chart-wrap" style="position:relative;flex:1;min-height:460px;background:#fff;border-radius:8px;border:1px solid var(--border);padding:10px;">
+            <canvas id="maxdd-chart"></canvas>
           </div>
-          <!-- Table view (hidden by default) -->
-          <div id="bar-table-wrap" style="display:none;flex:1;overflow:auto;background:#fff;border-radius:8px;border:1px solid var(--border);">
-            <table id="bar-table" style="width:100%;border-collapse:collapse;font-size:12px;font-family:'THSarabunNew';">
-              <thead id="bar-table-head"></thead>
-              <tbody id="bar-table-body"></tbody>
+          <div id="maxdd-stats-wrap" class="table-wrap risk-stats-wrap">
+            <table id="maxdd-stats-table">
+              <thead id="maxdd-stats-head"></thead>
+              <tbody id="maxdd-stats-body"></tbody>
             </table>
           </div>
         </div>
+      </div>
+    </div>
 
-      </div><!-- end risk-panels -->
+    <!-- PAGE: Max DD (Thai Fund) -->
+    <div id="page-other-factors-3" class="page">
+      <div class="risk-toolbar">
+        <span style="font-size:12px;color:var(--text-sub);" id="thai-maxdd-fund-count">—</span>
+      </div>
+
+      <div class="year-toggle-bar">
+        <span class="year-toggle-label">แสดงปี:</span>
+        <label class="year-check"><input type="checkbox" value="2016" checked onchange="toggleThaiMaxDdYear('2016',this.checked)">2016</label>
+        <label class="year-check"><input type="checkbox" value="2017" checked onchange="toggleThaiMaxDdYear('2017',this.checked)">2017</label>
+        <label class="year-check"><input type="checkbox" value="2018" checked onchange="toggleThaiMaxDdYear('2018',this.checked)">2018</label>
+        <label class="year-check"><input type="checkbox" value="2019" checked onchange="toggleThaiMaxDdYear('2019',this.checked)">2019</label>
+        <label class="year-check"><input type="checkbox" value="2020" checked onchange="toggleThaiMaxDdYear('2020',this.checked)">2020</label>
+        <label class="year-check"><input type="checkbox" value="2021" checked onchange="toggleThaiMaxDdYear('2021',this.checked)">2021</label>
+        <label class="year-check"><input type="checkbox" value="2022" checked onchange="toggleThaiMaxDdYear('2022',this.checked)">2022</label>
+        <label class="year-check"><input type="checkbox" value="2023" checked onchange="toggleThaiMaxDdYear('2023',this.checked)">2023</label>
+        <label class="year-check"><input type="checkbox" value="2024" checked onchange="toggleThaiMaxDdYear('2024',this.checked)">2024</label>
+        <label class="year-check"><input type="checkbox" value="2025" checked onchange="toggleThaiMaxDdYear('2025',this.checked)">2025</label>
+      </div>
+
+      <div class="risk-panels">
+        <div class="risk-panel risk-panel-left">
+          <div class="risk-panel-title">Max DD (Thai Fund) รายปี</div>
+          <div id="thai-maxdd-no-data" style="display:none;text-align:center;padding:60px;color:var(--text-sub);">
+            ยังไม่มีกองทุนที่เลือก
+          </div>
+          <div id="thai-maxdd-chart-wrap" style="position:relative;flex:1;min-height:460px;background:#fff;border-radius:8px;border:1px solid var(--border);padding:10px;">
+            <canvas id="thai-maxdd-chart"></canvas>
+          </div>
+          <div id="thai-maxdd-stats-wrap" class="table-wrap risk-stats-wrap">
+            <table id="thai-maxdd-stats-table">
+              <thead id="thai-maxdd-stats-head"></thead>
+              <tbody id="thai-maxdd-stats-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- PAGE: Top 10 Holding -->
@@ -474,11 +572,16 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:#4285f4"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           <span class="gas-label">Google Apps Script URL:</span>
           <input type="url" id="gas-url-input" class="gas-url-input"
-                 placeholder="https://script.google.com/macros/s/.../exec"
+                 placeholder="https://script.google.com/macros/s/AKfycbwtZMrMaJd7x91pmAazr5rDHaxphLV0olgR4jfaPWnpW4sKC9fkmETRxWaMZjsKmwcd/exec"
                  oninput="onGasUrlChange(this.value)">
           <button class="gas-save-btn" onclick="saveGasUrl()">บันทึก</button>
           <span id="gas-status-badge" class="gas-badge"></span>
           <a href="#" class="gas-help-link" onclick="toggleGasHelp(event)">วิธี deploy ▾</a>
+        </div>
+        <div class="gas-inline-tip">
+          ถ้ายังไม่ขึ้นว่า พร้อมใช้งาน ให้คัดลอกลิงก์นี้
+          <code>https://script.google.com/macros/s/AKfycbwtZMrMaJd7x91pmAazr5rDHaxphLV0olgR4jfaPWnpW4sKC9fkmETRxWaMZjsKmwcd/exec</code>
+          วางลงไปแล้วกด <strong>บันทึก</strong>
         </div>
         <div id="gas-help-panel" class="gas-help-panel" style="display:none;">
           <ol>
@@ -533,6 +636,10 @@
         <div id="top10-detail-panel" style="display:none;">
           <div class="top10-detail-hdr">
             <span id="top10-detail-label">Top 10 Holdings — กองที่เลือก</span>
+            <div class="top10-view-toggle">
+              <button class="top10-view-btn active" id="top10-view-card-btn" onclick="setTop10ViewMode('card')">Card View</button>
+              <button class="top10-view-btn" id="top10-view-compare-btn" onclick="setTop10ViewMode('compare')">Compare View</button>
+            </div>
           </div>
           <div id="top10-detail-content" class="top10-detail-content"></div>
         </div>
@@ -549,10 +656,15 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:#4285f4"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           <span class="gas-label">Google Apps Script URL:</span>
           <input type="url" id="gas-url-input-ft" class="gas-url-input"
-                 placeholder="https://script.google.com/macros/s/.../exec">
+                 placeholder="https://script.google.com/macros/s/AKfycbwtZMrMaJd7x91pmAazr5rDHaxphLV0olgR4jfaPWnpW4sKC9fkmETRxWaMZjsKmwcd/exec">
           <button class="gas-save-btn" onclick="saveGasUrlFt()">บันทึก</button>
           <span id="gas-status-badge-ft" class="gas-badge"></span>
           <a href="#" class="gas-help-link" onclick="toggleGasHelpFt(event)">วิธี deploy ▾</a>
+        </div>
+        <div class="gas-inline-tip">
+          ถ้ายังไม่ขึ้นว่า พร้อมใช้งาน ให้คัดลอกลิงก์นี้
+          <code>https://script.google.com/macros/s/AKfycbwtZMrMaJd7x91pmAazr5rDHaxphLV0olgR4jfaPWnpW4sKC9fkmETRxWaMZjsKmwcd/exec</code>
+          วางลงไปแล้วกด <strong>บันทึก</strong>
         </div>
         <div id="gas-help-panel-ft" class="gas-help-panel" style="display:none;">
           <ol>
